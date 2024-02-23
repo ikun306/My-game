@@ -1,0 +1,151 @@
+#include <SFML/Graphics.hpp>
+#include <SFML/Window.hpp>
+#include <vector>
+#include <iostream>
+
+using namespace sf;
+
+const int width = 1105; // 窗口宽度
+const int height = 800; // 窗口高度
+const int maxEnemies = 30; // 同时出现的敌人数量上限
+const float playerSpeed = 600.0f; // 玩家移动速度
+const float bulletCooldown = 0.05f; // 子弹发射间隔
+
+class Bullet {
+public:
+    RectangleShape shape;
+
+    Bullet(float x, float y) {
+        shape.setSize(Vector2f(10.0f, 5.0f));
+        shape.setPosition(x, y);
+        shape.setFillColor(Color::White);
+    }
+};
+
+class Player {
+public:
+    RectangleShape shape;
+
+    Player() {
+        shape.setSize(Vector2f(50.0f, 50.0f));
+        shape.setPosition(width / 2.0f, height - 100.0f);
+        shape.setFillColor(Color::Green);
+    }
+
+    void updatePosition(float mouseX) {
+        float newX = mouseX - shape.getSize().x / 2.0f; // 让玩家中心跟随鼠标位置
+        if (newX >= 0 && newX <= width - shape.getSize().x) // 限制玩家只能在窗口内移动
+            shape.setPosition(newX, shape.getPosition().y);
+    }
+};
+
+class Enemy {
+public:
+    RectangleShape shape;
+    Vector2f velocity;
+
+    Enemy(float x, float y) {
+        shape.setSize(Vector2f(50.0f, 50.0f));
+        shape.setPosition(x, y);
+        shape.setFillColor(Color::Red);
+        velocity = Vector2f(0.0f, 100.0f);
+    }
+
+    void update(float deltaTime) {
+        shape.move(velocity * deltaTime);
+    }
+};
+
+int main() {
+    RenderWindow window(VideoMode(width, height), "Bullet Hell Shooter");
+
+    Player player;
+
+    std::vector<Bullet> bullets;
+    std::vector<Enemy> enemies;
+
+    Clock clock;
+    Clock bulletClock;
+    int score = 0;
+
+    while (window.isOpen()) {
+        float deltaTime = clock.restart().asSeconds();
+        float bulletDeltaTime = bulletClock.getElapsedTime().asSeconds();
+
+        Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == Event::Closed)
+                window.close();
+
+            if (event.type == Event::KeyPressed && event.key.code == Keyboard::Escape)
+                window.close();
+        }
+
+        float mouseX = Mouse::getPosition(window).x; // 获取鼠标位置
+        player.updatePosition(mouseX);
+
+        if (Mouse::isButtonPressed(Mouse::Left) && bulletDeltaTime >= bulletCooldown) {
+            bullets.push_back(Bullet(player.shape.getPosition().x + player.shape.getSize().x / 2.0f,
+                player.shape.getPosition().y));
+            bulletClock.restart();
+        }
+
+        // 生成新的敌人
+        if (enemies.size() < maxEnemies && rand() % 100 == 0) {
+            enemies.push_back(Enemy(rand() % width, -50.0f));
+        }
+
+        for (size_t i = 0; i < bullets.size(); i++) {
+            bullets[i].shape.move(0.0f, -400.0f * deltaTime); // 子弹向上移动
+            // 如果子弹超出窗口范围，删除它
+            if (bullets[i].shape.getPosition().y < 0) {
+                bullets.erase(bullets.begin() + i);
+                i--;
+            }
+        }
+
+        for (size_t i = 0; i < enemies.size(); i++) {
+            enemies[i].update(deltaTime);
+            // 如果敌人移动到屏幕外，删除它
+            if (enemies[i].shape.getPosition().y > height) {
+                enemies.erase(enemies.begin() + i);
+                i--;
+            }
+            else {
+                // 如果敌人与子弹相撞，删除敌人和子弹，并增加分数
+                for (size_t j = 0; j < bullets.size(); j++) {
+                    if (enemies[i].shape.getGlobalBounds().intersects(bullets[j].shape.getGlobalBounds())) {
+                        enemies.erase(enemies.begin() + i);
+                        bullets.erase(bullets.begin() + j);
+                        score += 1; // 每次击中敌人增加1分
+                        i--;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 在游戏结束时显示分数
+        if (!window.isOpen()) {
+            std::cout << "你击中了: " << score <<"个敌人"<< std::endl;
+            break;
+        }
+
+        window.clear();
+
+        // 绘制玩家
+        window.draw(player.shape);
+
+        // 绘制子弹
+        for (const auto& bullet : bullets)
+            window.draw(bullet.shape);
+
+        // 绘制敌人
+        for (const auto& enemy : enemies)
+            window.draw(enemy.shape);
+
+        window.display();
+    }
+    system("pause");
+    return 0;
+}
